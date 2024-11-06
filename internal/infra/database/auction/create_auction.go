@@ -86,35 +86,22 @@ func (ar *AuctionRepository) autoClose(ctx context.Context) error {
 			continue
 		}
 
-		ar.CloseMutex.Lock()
 		_, okStatus := ar.AuctionsAutoClose[auctionEntity.Id]
 		if okStatus {
-			ar.CloseMutex.Unlock()
 			continue
 		}
 
 		ar.AuctionsAutoClose[auctionEntity.Id] = auction_entity.Active
-		ar.CloseMutex.Unlock()
 
 		timer := time.NewTimer(timeUntilClose)
 
 		go func(auction auction_entity.Auction) {
-			defer timer.Stop()
-
-			select {
-			case <-ctx.Done():
-				logger.Info(fmt.Sprintf("Auction closing for %s cancelled due to context cancellation", auction.Id))
-				return
-			case <-timer.C:
-				ar.CloseMutex.Lock()
-				defer ar.CloseMutex.Unlock()
-
-				err := ar.closeAuction(ctx, auction)
-				if err != nil {
-					logger.Error(fmt.Sprintf("Failed to close auction %s automatically", auction.Id), err)
-				}
-				delete(ar.AuctionsAutoClose, auction.Id)
+			<-timer.C
+			err := ar.closeAuction(ctx, auction)
+			if err != nil {
+				logger.Error(fmt.Sprintf("Failed to close auction %s automatically", auction.Id), err)
 			}
+			delete(ar.AuctionsAutoClose, auction.Id)
 		}(auctionEntity)
 	}
 
@@ -125,7 +112,6 @@ func getAuctionInterval() time.Duration {
 	auctionInterval := os.Getenv("AUCTION_INTERVAL")
 	duration, err := time.ParseDuration(auctionInterval)
 	if err != nil {
-		logger.Error("AUCTION_INTERVAL not set correctly; defaulting to 5 minutes.", err)
 		return time.Minute * 5
 	}
 
