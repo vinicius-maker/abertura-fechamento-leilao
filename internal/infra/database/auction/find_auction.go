@@ -79,3 +79,38 @@ func (repo *AuctionRepository) FindAuctions(
 
 	return auctionsEntity, nil
 }
+
+func (repo *AuctionRepository) FindOpenAuctions(
+	ctx context.Context) ([]auction_entity.Auction, *internal_error.InternalError) {
+	filter := bson.M{"status": auction_entity.Active}
+
+	cursor, err := repo.Collection.Find(ctx, filter)
+	if err != nil {
+		logger.Error("Error finding auctions", err)
+		return nil, internal_error.NewInternalServerError("Error finding auctions")
+	}
+	defer cursor.Close(ctx)
+
+	var auctionsMongo []AuctionEntityMongo
+
+	if err := cursor.All(ctx, &auctionsMongo); err != nil {
+		logger.Error("Error decoding auctions", err)
+		return nil, internal_error.NewInternalServerError("Error decoding auctions")
+	}
+
+	var auctionsEntity []auction_entity.Auction
+
+	for _, auction := range auctionsMongo {
+		auctionsEntity = append(auctionsEntity, auction_entity.Auction{
+			Id:          auction.Id,
+			ProductName: auction.ProductName,
+			Category:    auction.Category,
+			Status:      auction.Status,
+			Description: auction.Description,
+			Condition:   auction.Condition,
+			Timestamp:   time.Unix(auction.Timestamp, 0),
+		})
+	}
+
+	return auctionsEntity, nil
+}
